@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8" />
+    <title>Matrix Chat</title>
+    <link rel="manifest" href="manifest.json">
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(() => console.log('Service Worker зареєстровано'))
+                .catch(err => console.error('SW error', err));
+        }
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>[x-cloak]{display:none!important}</style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+<div
+        x-data="chatApp()"
+        x-cloak
+        class="bg-white p-6 rounded-2xl shadow-lg transition-all"
+        :class="accessToken ? 'w-[720px]' : 'w-96'"
+>
+
+    <template x-if="!accessToken">
+        <div>
+            <h2 class="text-2xl font-bold mb-5 text-center">Login</h2>
+
+            <label class="block text-sm mb-1 text-gray-700">Username (без @ і :matrix.org)</label>
+            <input
+                    x-model="username"
+                    class="border p-2 w-full mb-3 rounded"
+                    placeholder="напр. ghoust.network"
+                    autocomplete="username"
+            />
+
+            <label class="block text-sm mb-1 text-gray-700">Password</label>
+            <input
+                    x-model="password"
+                    type="password"
+                    class="border p-2 w-full mb-3 rounded"
+                    placeholder="Ваш пароль"
+                    autocomplete="current-password"
+            />
+
+            <button
+                    @click="login()"
+                    :disabled="isLoading"
+                    class="bg-blue-600 text-white p-2 w-full rounded hover:bg-blue-700 disabled:opacity-60"
+            >
+                <span x-show="!isLoading">Login</span>
+                <span x-show="isLoading">Зачекайте…</span>
+            </button>
+
+            <p x-text="error" class="text-red-500 mt-3 text-center"></p>
+        </div>
+    </template>
+
+    <template x-if="accessToken">
+        <div>
+            <h1 class="text-xl font-semibold text-center mb-4">
+                Ви успішно авторизувались. Ваша панель керування
+            </h1>
+
+            <div class="mb-4 p-3 bg-gray-100 rounded border text-sm break-words">
+                <span class="font-bold">Your Matrix ID: </span>
+                <span x-text="userId || 'Loading…'"></span>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <!-- Карточка Резюме -->
+                <div class="border rounded-lg p-4">
+                    <h2 class="font-semibold mb-3">Резюме</h2>
+
+                    <label class="block text-sm text-gray-700 mb-1">Ім’я / Нікнейм</label>
+                    <input x-model="resume.name" class="border rounded w-full p-2 mb-3" placeholder="Akiyama" />
+
+                    <label class="block text-sm text-gray-700 mb-1">Електронна пошта</label>
+                    <input x-model="resume.email" class="border rounded w-full p-2 mb-3" placeholder="you@example.com" />
+
+                    <label class="block text-sm text-gray-700 mb-1">Про себе</label>
+                    <textarea x-model="resume.about" rows="4" class="border rounded w-full p-2 mb-3"
+                              placeholder="Коротко про досвід, навички, інтереси…"></textarea>
+
+                    <div class="flex gap-2">
+                        <button @click="saveResume()"
+                                class="bg-emerald-600 text-white px-3 py-2 rounded hover:bg-emerald-700">
+                            Зберегти резюме
+                        </button>
+                        <button @click="clearResume()"
+                                class="bg-gray-200 text-gray-800 px-3 py-2 rounded hover:bg-gray-300">
+                            Очистити
+                        </button>
+                    </div>
+
+                    <p x-text="resumeMessage" class="text-sm mt-2 text-emerald-700"></p>
+                </div>
+
+                <div class="border rounded-lg p-4">
+                    <h2 class="font-semibold mb-3">Інформація</h2>
+                    <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+                        <li>Сесія активна: <span class="font-mono" x-text="Boolean(accessToken)"></span></li>
+                        <li>Пристрій: <span class="font-mono">PWA Matrix Chat</span></li>
+                    </ul>
+
+                    <button @click="logout()"
+                            class="mt-4 bg-gray-700 text-white px-3 py-2 rounded hover:bg-gray-800">
+                        Вийти
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+</div>
+
+<script>
+    function chatApp() {
+        return {
+            username: '',
+            password: '',
+            accessToken: '',
+            userId: '',
+            error: '',
+            isLoading: false,
+
+            resume: { name: '', email: '', about: '' },
+            resumeMessage: '',
+
+            loadResume() {
+                try {
+                    const raw = localStorage.getItem('resume');
+                    if (raw) this.resume = JSON.parse(raw);
+                } catch (_) {}
+            },
+            saveResume() {
+                localStorage.setItem('resume', JSON.stringify(this.resume));
+                this.resumeMessage = 'Збережено ✓';
+                setTimeout(() => this.resumeMessage = '', 2000);
+            },
+            clearResume() {
+                this.resume = { name: '', email: '', about: '' };
+                localStorage.removeItem('resume');
+                this.resumeMessage = 'Очищено';
+                setTimeout(() => this.resumeMessage = '', 2000);
+            },
+
+            async login() {
+                this.error = '';
+                this.isLoading = true;
+
+                let userInput = this.username.trim();
+                if (!userInput.includes(':')) {
+                    userInput = '@' + userInput.replace(/^@+/, '') + ':matrix.org';
+                }
+
+                try {
+                    const res = await fetch('https://matrix.org/_matrix/client/v3/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'm.login.password',
+                            identifier: { type: 'm.id.user', user: userInput },
+                            password: this.password,
+                            initial_device_display_name: 'PWA Matrix Chat'
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok && data.access_token) {
+                        this.accessToken = data.access_token;
+                        this.userId = data.user_id;
+                        this.password = '';
+                        this.loadResume();
+                    } else {
+                        if (data && data.errcode === 'M_FORBIDDEN') {
+                            this.error = 'Невірний логін або пароль';
+                        } else if (data && data.error) {
+                            this.error = `Помилка: ${data.error}`;
+                        } else {
+                            this.error = 'Не вдалося увійти. Спробуйте ще раз.';
+                        }
+                    }
+                } catch (e) {
+                    console.error(e);
+                    this.error = 'Помилка мережі або сервера.';
+                } finally {
+                    this.isLoading = false;
+                }
+            },
+
+            logout() {
+                this.accessToken = '';
+                this.userId = '';
+                this.username = '';
+                this.password = '';
+                this.error = '';
+            }
+        }
+    }
+</script>
+</body>
+</html>
