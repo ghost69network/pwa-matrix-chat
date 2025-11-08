@@ -26,8 +26,6 @@ Matrix Chat PWA
 1. Клонувати або завантажити цей репозиторій:
    ```bash
    git clone https://github.com/ghost69network/pwa-matrix-chat.git
-````
-
 2. Відкрити файл `index.html` у браузері (наприклад через WebStorm або Live Server).
 3. Ввести логін користувача Matrix (без `@` і `:matrix.org`) і пароль.
 4. Після входу зʼявиться панель керування з вашим ID.
